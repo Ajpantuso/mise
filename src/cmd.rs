@@ -371,6 +371,12 @@ impl Display for CmdLineRunner<'_> {
     }
 }
 
+impl std::fmt::Debug for CmdLineRunner<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "cmd: {:#?}", self.cmd)
+    }
+}
+
 enum ChildProcessOutput {
     Stdout(String),
     Stderr(String),

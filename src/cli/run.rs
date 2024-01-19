@@ -287,6 +287,11 @@ impl Run {
         if self.dry_run {
             return Ok(());
         }
+
+        dbg!(&self.cd);
+        dbg!(&cmd);
+        dbg!(task);
+
         if let Err(err) = cmd.execute() {
             if let Some(ScriptFailed(_, Some(status))) = err.downcast_ref::<Error>() {
                 if let Some(code) = status.code() {
