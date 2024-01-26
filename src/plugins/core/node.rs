@@ -134,13 +134,19 @@ impl NodePlugin {
     }
 
     fn exec_configure(&self, ctx: &InstallContext, opts: &BuildOpts) -> Result<()> {
-        self.sh(ctx, opts)?.arg(&opts.configure_cmd).execute()
+        self.sh(ctx, opts)?.arg(&opts.configure_cmd).execute()?;
+
+        Ok(())
     }
     fn exec_make(&self, ctx: &InstallContext, opts: &BuildOpts) -> Result<()> {
-        self.sh(ctx, opts)?.arg(&opts.make_cmd).execute()
+        self.sh(ctx, opts)?.arg(&opts.make_cmd).execute()?;
+
+        Ok(())
     }
     fn exec_make_install(&self, ctx: &InstallContext, opts: &BuildOpts) -> Result<()> {
-        self.sh(ctx, opts)?.arg(&opts.make_install_cmd).execute()
+        self.sh(ctx, opts)?.arg(&opts.make_install_cmd).execute()?;
+
+        Ok(())
     }
 
     fn verify(&self, tarball: &Path, version: &str) -> Result<()> {
@@ -214,7 +220,9 @@ impl NodePlugin {
             .with_pr(pr)
             .arg("-v")
             .envs(config.env()?)
-            .execute()
+            .execute()?;
+
+        Ok(())
     }
 
     fn test_npm(&self, config: &Config, tv: &ToolVersion, pr: &dyn SingleReport) -> Result<()> {
@@ -224,7 +232,9 @@ impl NodePlugin {
             .with_pr(pr)
             .arg("-v")
             .envs(config.env()?)
-            .execute()
+            .execute()?;
+
+        Ok(())
     }
 
     fn shasums_url(&self, v: &str) -> Result<Url> {

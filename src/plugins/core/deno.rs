@@ -58,7 +58,9 @@ impl DenoPlugin {
         CmdLineRunner::new(self.deno_bin(tv))
             .with_pr(pr)
             .arg("-V")
-            .execute()
+            .execute()?;
+
+        Ok(())
     }
 
     fn download(&self, tv: &ToolVersion, pr: &dyn SingleReport) -> Result<PathBuf> {

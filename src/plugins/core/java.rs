@@ -121,7 +121,9 @@ impl JavaPlugin {
             .with_pr(pr)
             .env("JAVA_HOME", tv.install_path())
             .arg("-version")
-            .execute()
+            .execute()?;
+
+        Ok(())
     }
 
     fn download(

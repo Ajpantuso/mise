@@ -210,7 +210,9 @@ impl PythonPlugin {
             .arg("-r")
             .arg(packages_file)
             .envs(config.env()?)
-            .execute()
+            .execute()?;
+
+        Ok(())
     }
 
     fn get_virtualenv(
@@ -285,7 +287,9 @@ impl PythonPlugin {
         CmdLineRunner::new(self.python_path(tv))
             .arg("--version")
             .envs(config.env()?)
-            .execute()
+            .execute()?;
+
+        Ok(())
     }
 }
 

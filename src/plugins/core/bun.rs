@@ -54,7 +54,9 @@ impl BunPlugin {
         CmdLineRunner::new(self.bun_bin(&ctx.tv))
             .with_pr(ctx.pr.as_ref())
             .arg("-v")
-            .execute()
+            .execute()?;
+
+        Ok(())
     }
 
     fn download(&self, tv: &ToolVersion, pr: &dyn SingleReport) -> Result<PathBuf> {

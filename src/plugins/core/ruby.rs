@@ -209,7 +209,9 @@ impl RubyPlugin {
             .with_pr(pr)
             .arg("-v")
             .envs(config.env()?)
-            .execute()
+            .execute()?;
+
+        Ok(())
     }
 
     fn test_gem(&self, config: &Config, tv: &ToolVersion, pr: &dyn SingleReport) -> Result<()> {
@@ -219,7 +221,9 @@ impl RubyPlugin {
             .arg("-v")
             .envs(config.env()?)
             .env("PATH", CorePlugin::path_env_with_tv_path(tv)?)
-            .execute()
+            .execute()?;
+
+        Ok(())
     }
 
     fn ruby_build_version(&self) -> Result<String> {

@@ -107,6 +107,10 @@ pub struct Run {
     #[clap(long, short, verbatim_doc_comment)]
     pub raw: bool,
 
+    /// Shows elapsed time after each task
+    #[clap(long, alias = "timing", verbatim_doc_comment)]
+    pub timings: bool,
+
     #[clap(skip)]
     pub is_linear: bool,
 }
@@ -299,18 +303,25 @@ impl Run {
         if self.dry_run {
             return Ok(());
         }
-        if let Err(err) = cmd.execute() {
-            if let Some(ScriptFailed(_, Some(status))) = err.downcast_ref::<Error>() {
-                if let Some(code) = status.code() {
-                    error!("{prefix} exited with code {code}");
-                    exit(code);
-                } else if let Some(signal) = status.signal() {
-                    error!("{prefix} killed by signal {signal}");
-                    exit(1);
+        match cmd.execute() {
+            Ok(stat) => {
+                if self.timings {
+                    miseprintln!("elapsed time: {:?}", stat.elapsed())
                 }
             }
-            error!("{err}");
-            exit(1);
+            Err(err) => {
+                if let Some(ScriptFailed(_, Some(status))) = err.downcast_ref::<Error>() {
+                    if let Some(code) = status.code() {
+                        error!("{prefix} exited with code {code}");
+                        exit(code);
+                    } else if let Some(signal) = status.signal() {
+                        error!("{prefix} killed by signal {signal}");
+                        exit(1);
+                    }
+                }
+                error!("{err}");
+                exit(1);
+            }
         }
         trace!("{prefix} exited successfully");
         Ok(())

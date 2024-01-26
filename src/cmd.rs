@@ -1,11 +1,14 @@
 use std::ffi::{OsStr, OsString};
 use std::fmt::{Display, Formatter};
+use std::io;
 use std::io::{BufRead, BufReader, Write};
+use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc::channel;
 use std::sync::{Mutex, RwLock};
 use std::thread;
+use std::time;
 
 use color_eyre::Result;
 use duct::{Expression, IntoExecutablePath};
@@ -223,7 +226,7 @@ impl<'a> CmdLineRunner<'a> {
         self
     }
 
-    pub fn execute(mut self) -> Result<()> {
+    pub fn execute(mut self) -> Result<ExecStatus> {
         static RAW_LOCK: RwLock<()> = RwLock::new(());
         let read_lock = RAW_LOCK.read().unwrap();
         let settings = &Settings::try_get()?;
@@ -233,9 +236,7 @@ impl<'a> CmdLineRunner<'a> {
             let _write_lock = RAW_LOCK.write().unwrap();
             return self.execute_raw();
         }
-        let mut cp = self
-            .cmd
-            .spawn()
+        let mut cp = TimedProcess::spawn(&mut self.cmd)
             .wrap_err_with(|| format!("failed to execute command: {self}"))?;
         let (tx, rx) = channel();
         if let Some(stdout) = cp.stdout.take() {
@@ -311,18 +312,19 @@ impl<'a> CmdLineRunner<'a> {
         let status = status.unwrap();
 
         if !status.success() {
-            self.on_error(combined_output.join("\n"), status)?;
+            self.on_error(combined_output.join("\n"), *status)?;
         }
 
-        Ok(())
+        Ok(status.into())
     }
 
-    fn execute_raw(mut self) -> Result<()> {
-        let status = self.cmd.spawn()?.wait()?;
-        match status.success() {
-            true => Ok(()),
-            false => self.on_error(String::new(), status),
+    fn execute_raw(mut self) -> Result<ExecStatus> {
+        let status = TimedProcess::spawn(&mut self.cmd)?.wait()?;
+        if !status.success() {
+            self.on_error(String::new(), *status)?;
         }
+
+        Ok(status.into())
     }
 
     fn on_stdout(&self, line: &str) {
@@ -394,8 +396,89 @@ impl Display for CmdLineRunner<'_> {
 enum ChildProcessOutput {
     Stdout(String),
     Stderr(String),
-    ExitStatus(ExitStatus),
+    ExitStatus(TimedProcessExitStatus),
     Signal(i32),
+}
+
+struct TimedProcess {
+    proc: Child,
+    instant: time::Instant,
+}
+
+impl TimedProcess {
+    fn spawn(cmd: &mut Command) -> io::Result<TimedProcess> {
+        Ok(Self {
+            proc: cmd.spawn()?,
+            instant: time::Instant::now(),
+        })
+    }
+
+    fn wait(&mut self) -> io::Result<TimedProcessExitStatus> {
+        let status = self.proc.wait()?;
+
+        Ok(TimedProcessExitStatus {
+            status,
+            elapsed: self.instant.elapsed(),
+        })
+    }
+}
+
+impl Deref for TimedProcess {
+    type Target = Child;
+
+    fn deref(&self) -> &Self::Target {
+        &self.proc
+    }
+}
+
+impl DerefMut for TimedProcess {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.proc
+    }
+}
+
+struct TimedProcessExitStatus {
+    pub status: ExitStatus,
+    elapsed: time::Duration,
+}
+
+impl TimedProcessExitStatus {
+    pub fn elapsed(&self) -> time::Duration {
+        self.elapsed
+    }
+}
+
+impl Deref for TimedProcessExitStatus {
+    type Target = ExitStatus;
+
+    fn deref(&self) -> &Self::Target {
+        &self.status
+    }
+}
+
+impl DerefMut for TimedProcessExitStatus {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.status
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ExecStatus {
+    elapsed: time::Duration,
+}
+
+impl ExecStatus {
+    pub fn elapsed(&self) -> time::Duration {
+        self.elapsed
+    }
+}
+
+impl From<TimedProcessExitStatus> for ExecStatus {
+    fn from(status: TimedProcessExitStatus) -> Self {
+        Self {
+            elapsed: status.elapsed(),
+        }
+    }
 }
 
 #[cfg(test)]

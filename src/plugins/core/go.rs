@@ -94,7 +94,9 @@ impl GoPlugin {
         CmdLineRunner::new(self.go_bin(tv))
             .with_pr(pr)
             .arg("version")
-            .execute()
+            .execute()?;
+
+        Ok(())
     }
 
     fn download(&self, tv: &ToolVersion, pr: &dyn SingleReport) -> Result<PathBuf> {
