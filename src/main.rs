@@ -62,6 +62,7 @@ mod logger;
 mod migrate;
 mod path_env;
 mod plugins;
+mod process;
 mod rand;
 mod runtime_symlinks;
 mod shell;

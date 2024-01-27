@@ -1,4 +1,4 @@
-use std::process::ExitStatus;
+use crate::process::ExitStatus;
 
 use thiserror::Error;
 
