@@ -5,7 +5,8 @@ use std::os::unix::prelude::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{exit, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use std::time;
 use std::time::SystemTime;
 
 use clap::ValueHint;
@@ -113,6 +114,9 @@ pub struct Run {
 
     #[clap(skip)]
     pub is_linear: bool,
+
+    #[clap(skip)]
+    recorder: Arc<Mutex<Recorder<TaskMetrics>>>,
 }
 
 impl Run {
@@ -177,6 +181,12 @@ impl Run {
             self.validate_task(task)?;
         }
 
+        match self.recorder.lock() {
+            Ok(mut inner) => inner,
+            Err(poison) => poison.into_inner(),
+        }
+        .start_timer();
+
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(self.jobs() + 1)
             .build()?;
@@ -199,6 +209,24 @@ impl Run {
                 run(&task);
             }
         });
+
+        match self.recorder.lock() {
+            Ok(mut inner) => inner,
+            Err(poison) => poison.into_inner(),
+        }
+        .stop_timer();
+
+        let elapsed = match self.recorder.lock() {
+            Ok(inner) => inner,
+            Err(poison) => poison.into_inner(),
+        }
+        .elapsed()
+        .unwrap();
+
+        if self.timings {
+            miseprintln!("total time: {:?}", style::nbold(elapsed))
+        }
+
         Ok(())
     }
 
@@ -306,8 +334,17 @@ impl Run {
         match cmd.execute() {
             Ok(stat) => {
                 if self.timings {
-                    miseprintln!("elapsed time: {:?}", stat.elapsed())
+                    miseprintln!("{prefix} elapsed time: {:?}", style::nbold(stat.elapsed()))
                 }
+
+                match self.recorder.lock() {
+                    Ok(inner) => inner,
+                    Err(poison) => poison.into_inner(),
+                }
+                .record(TaskMetrics {
+                    name: task.name.clone(),
+                    elapsed: stat.elapsed(),
+                })
             }
             Err(err) => {
                 if let Some(ScriptFailed(_, Some(status))) = err.downcast_ref::<Error>() {
@@ -542,6 +579,56 @@ fn get_color() -> Color {
     static COLOR_IDX: AtomicUsize = AtomicUsize::new(0);
     COLORS[COLOR_IDX.fetch_add(1, Ordering::Relaxed) % COLORS.len()]
 }
+
+#[derive(Debug, Default)]
+struct Recorder<T> {
+    metrics: Vec<T>,
+    timer: Option<time::Instant>,
+    total_elapsed: Option<time::Duration>,
+}
+
+impl<T> Recorder<T> {
+    pub fn start_timer(&mut self) {
+        if self.timer.is_none() {
+            self.timer = Some(time::Instant::now())
+        };
+    }
+
+    pub fn stop_timer(&mut self) {
+        self.total_elapsed = self.timer.map(|t| t.elapsed());
+        self.timer = None;
+    }
+
+    pub fn elapsed(&self) -> Option<time::Duration> {
+        self.total_elapsed
+    }
+
+    pub fn record(&mut self, record: T) {
+        self.metrics.push(record)
+    }
+}
+
+trait Metrics {
+    fn name(&self) -> &String;
+    fn elapsed(&self) -> &time::Duration;
+}
+
+#[derive(Clone, Debug, Default)]
+struct TaskMetrics {
+    pub name: String,
+    pub elapsed: time::Duration,
+}
+
+impl Metrics for TaskMetrics {
+    fn name(&self) -> &String {
+        &self.name
+    }
+
+    fn elapsed(&self) -> &time::Duration {
+        &self.elapsed
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::file;
