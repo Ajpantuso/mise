@@ -216,15 +216,14 @@ impl Run {
         }
         .stop_timer();
 
-        let elapsed = match self.recorder.lock() {
-            Ok(inner) => inner,
-            Err(poison) => poison.into_inner(),
-        }
-        .elapsed()
-        .unwrap();
-
         if self.timings {
-            miseprintln!("total time: {:?}", style::nbold(elapsed))
+            let report = match self.recorder.lock() {
+                Ok(inner) => inner,
+                Err(poison) => poison.into_inner(),
+            }
+            .report(MetricsReporter::new());
+
+            miseprintln!("\n{}", report)
         }
 
         Ok(())
@@ -599,12 +598,78 @@ impl<T> Recorder<T> {
         self.timer = None;
     }
 
-    pub fn elapsed(&self) -> Option<time::Duration> {
-        self.total_elapsed
-    }
-
     pub fn record(&mut self, record: T) {
         self.metrics.push(record)
+    }
+}
+
+impl Recorder<TaskMetrics> {
+    pub fn report(&mut self, reporter: impl Reporter<TaskMetrics>) -> String {
+        let total = TaskMetrics {
+            name: "all".into(),
+            elapsed: self.total_elapsed.unwrap_or_default(),
+        };
+
+        let metrics = self.metrics.iter().chain(std::iter::once(&total));
+
+        reporter.report(metrics.cloned())
+    }
+}
+
+trait Reporter<T> {
+    fn report(&self, values: impl IntoIterator<Item = T>) -> String;
+}
+
+struct MetricsReporter {
+    format: Format,
+}
+
+impl MetricsReporter {
+    pub fn new() -> Self {
+        Self {
+            format: Format::Table,
+        }
+    }
+    fn write_table<M: Into<MetricsRow>>(&self, values: impl IntoIterator<Item = M>) -> String {
+        let mut table = tabled::Table::new(values.into_iter().map(Into::into));
+        ui::table::default_style(&mut table, false);
+
+        table.to_string()
+    }
+}
+
+impl<M: Into<MetricsRow>> Reporter<M> for MetricsReporter {
+    fn report(&self, values: impl IntoIterator<Item = M>) -> String {
+        match self.format {
+            Format::Table => self.write_table(values),
+        }
+    }
+}
+
+enum Format {
+    Table,
+}
+
+#[derive(tabled::Tabled)]
+#[tabled(rename_all = "PascalCase")]
+struct MetricsRow {
+    name: String,
+    #[tabled(display_with = "Self::display_duration")]
+    elapsed: time::Duration,
+}
+
+impl MetricsRow {
+    pub fn display_duration(dur: &time::Duration) -> String {
+        format!("{:?}", dur)
+    }
+}
+
+impl<M: Metrics> From<M> for MetricsRow {
+    fn from(value: M) -> Self {
+        Self {
+            name: value.name().clone(),
+            elapsed: *value.elapsed(),
+        }
     }
 }
 
